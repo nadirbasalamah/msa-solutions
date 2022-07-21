@@ -39,6 +39,13 @@ func (q *UniqueQueue) Push(key interface{}) {
 
 		q.rear = 1 + q.rear
 		q.queue[q.rear] = key
+	} else {
+		q.Pop()
+
+		q.length = q.length + 1
+
+		q.rear = 1 + q.rear
+		q.queue[q.rear] = key
 	}
 }
 
@@ -49,7 +56,7 @@ func (q *UniqueQueue) Pop() interface{} {
 
 	var tmp interface{} = q.queue[q.front]
 
-	for i := 0; i < q.length; i++ {
+	for i := 0; i < q.length-1; i++ {
 		q.queue[i] = q.queue[i+1]
 	}
 
