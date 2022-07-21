@@ -57,8 +57,7 @@ func TestPop(t *testing.T) {
 		// validate
 		expect := testValues[len(testValues)-(q.Len()+1)]
 		if v != expect {
-			// t.Error("expected %v but recevied %v", expect, v)
-			t.Error("failed!")
+			t.Error("expected %v but recevied %v", expect, v)
 		}
 	}
 
