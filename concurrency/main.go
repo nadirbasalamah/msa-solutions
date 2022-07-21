@@ -3,15 +3,17 @@ package main
 import (
 	"encoding/csv"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 )
 
-const BASE_URL = "https://data.gov.sg/api/action/datastore_search?resource_id=eb8b932c-503c-41e7-b513-114cffbe2338&limit=5"
+// define the BASE_URL of the API
+const BASE_URL = "https://data.gov.sg/api/action/datastore_search?resource_id=eb8b932c-503c-41e7-b513-114cffbe2338&limit=100"
 
+// GraduationData represents graduation data from the API
 type GraduationData struct {
 	Help    string `json:"help"`
 	Success bool   `json:"success"`
@@ -37,58 +39,120 @@ type GraduationData struct {
 	} `json:"result"`
 }
 
-func fetchGraduationData() (GraduationData, error) {
-	var err error
+// fetchGraduationData returns a channel that contains graduation data
+func fetchGraduationData() <-chan GraduationData {
+	// create a channel
+	result := make(chan GraduationData)
+
+	// create a HTTP client
 	var client = &http.Client{}
+
+	// create a graduation data
+	// this data will be decoded
 	var data GraduationData
 
-	request, err := http.NewRequest(http.MethodGet, BASE_URL, nil)
-	if err != nil {
-		return GraduationData{}, err
-	}
+	// launch a goroutine
+	go func() {
+		// create a new HTTP request
+		request, err := http.NewRequest(http.MethodGet, BASE_URL, nil)
+		if err != nil {
+			log.Fatalln("error when creating a request: ", err)
+		}
 
-	response, err := client.Do(request)
-	if err != nil {
-		return GraduationData{}, err
-	}
-	defer response.Body.Close()
+		// send the request
+		response, err := client.Do(request)
+		if err != nil {
+			log.Fatalln("error when sending a request: ", err)
+		}
 
-	err = json.NewDecoder(response.Body).Decode(&data)
-	if err != nil {
-		return GraduationData{}, err
-	}
+		// close the response body if decoding process is finished
+		defer response.Body.Close()
 
-	return data, nil
+		// decode the response body into the "data" variable
+		err = json.NewDecoder(response.Body).Decode(&data)
+		if err != nil {
+			log.Fatalln("error when decoding a response: ", err)
+		}
+
+		// assign the graduation data to the channel
+		result <- data
+
+		// close the channel
+		close(result)
+	}()
+
+	// return the channel that contains graduation data
+	return result
 }
 
 func main() {
-	var graduationData, err = fetchGraduationData()
-	if err != nil {
-		fmt.Println("Error!", err.Error())
-		return
-	}
+	// fetch the graduation data
+	graduationChannel := fetchGraduationData()
 
-	graduations := graduationData.Result.Records
+	// create a receiver to receive the graduation data
+	receiver := make(chan GraduationData)
 
+	// receive the graduation data from the
+	// graduationChannel
+	go receive(graduationChannel, receiver)
+
+	// create a new CSV file
 	csvFile, err := os.Create("graduation.csv")
 
 	if err != nil {
 		log.Fatalf("failed creating file: %s", err)
 	}
 
+	// create a new CSV writer
+	// to write the content to the CSV
 	csvwriter := csv.NewWriter(csvFile)
 
-	for _, graduation := range graduations {
-		var data []string = []string{
-			strconv.Itoa(graduation.ID),
-			graduation.Sex,
-			graduation.TypeOfCourse,
-			graduation.NoOfGraduates,
-			graduation.Year,
-		}
+	// iterate through the received value from the receiver channel
+	for received := range receiver {
+		// iterate through the graduation data
+		for _, graduation := range received.Result.Records {
+			var data []string = []string{
+				strconv.Itoa(graduation.ID),
+				graduation.Sex,
+				graduation.TypeOfCourse,
+				graduation.NoOfGraduates,
+				graduation.Year,
+			}
 
-		_ = csvwriter.Write(data)
+			// write the graduation data to the CSV file
+			_ = csvwriter.Write(data)
+		}
 	}
+
+	// close the writer and the CSV file
+	// to avoid resources leaks
 	csvwriter.Flush()
 	csvFile.Close()
+}
+
+// receive receives a value from the channel
+func receive(channel <-chan GraduationData, receiver chan GraduationData) {
+	// create a WaitGroup
+	var wg sync.WaitGroup
+
+	// add one WaitGroup
+	wg.Add(1)
+
+	// launch a goroutine
+	// to retrieve a value from the channel
+	go func() {
+		// iterate through every value inside the channel
+		for n := range channel {
+			// assign the value to the receiver channel
+			receiver <- n
+		}
+		// the operation is done
+		wg.Done()
+	}()
+
+	// wait until the operation inside the goroutine is finished
+	wg.Wait()
+
+	// close the receiver channel
+	close(receiver)
 }
