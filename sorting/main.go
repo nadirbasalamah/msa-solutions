@@ -5,6 +5,8 @@ import "fmt"
 func main() {
 	var sample []int = []int{1, 4, 5, 6, 8, 2}
 
+	fmt.Println("before sort visualization")
+	visualize(sample)
 	fmt.Println("before sort: ", sample)
 	fmt.Println("ascending sort: ", sort(sample))
 	fmt.Println("descending sort: ", reverseSort(sample))
